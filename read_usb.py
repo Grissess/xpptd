@@ -6,6 +6,13 @@ class Tablet(object):
     VENDOR = 0x28bd
     PRODUCT = 0x094a
 
+    SETUP_CMD1 = array.array('B',
+            [0x02, 0xb0, 0x04] + 7 * [0]
+    )
+    SETUP_CMD2 = array.array('B',
+            [0x02, 0xb4, 0x01, 0x00, 0x01] + 7 * [0]
+    )
+
     B1_REPORT = 0x02
 
     B2_MASK = 0xf0
@@ -38,8 +45,16 @@ class Tablet(object):
         except usb.core.USBError:
             print("Couldn't set configuration--the interface might already be claimed")
         self.cfg = self.dev.get_active_configuration()
+        for intf in self.cfg.interfaces():
+            try:
+                self.dev.detach_kernel_driver(intf.bInterfaceNumber)
+            except usb.core.USBError:
+                print(f"Failed to detach interface {intf.bInterfaceNumber}--no kernel driver?")
         self.int = self.cfg[2, 0]
-        self.epi = self.int[0]
+        self.int.set_altsetting()
+        self.epi, self.epo = self.int.endpoints()
+        self.epo.write(self.SETUP_CMD1)
+        self.epo.write(self.SETUP_CMD2)
         self.buf = array.array('B', range(12))
 
         self.buttons = 0  # bitmask of all 8 buttons, "top left" LSB and in order down the side
