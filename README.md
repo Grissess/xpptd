@@ -29,9 +29,13 @@ Since I'm still bad at packaging Python, I'll just tell you you need:
 You'll also need to make sure your kernel supports `uinput`, the "User level
 driver support" `CONFIG_INPUT_UINPUT`. Most prebuilt kernels for typical linux
 distros have this, but you might need to, e.g., take care of this on Gentoo,
-LFS, Exherbo, or the like. In addition, you might need to (`sudo`) `modprobe uinput` if
-it was built as a kernel module--this script intentionally doesn't run with
-rights to load it automatically.
+LFS, Exherbo, or the like. In addition, you might need to (`sudo`) `modprobe
+uinput` if it was built as a kernel module--this script intentionally doesn't
+run with rights to load it automatically. (Speaking of not running with rights,
+check that you have permissions to the `/dev/uinput` node as well; it has come
+to my attention that some distributions restrict this, as it confers an ability
+to believably simulate any user input--persons concerned about this should give
+pause to that consideration, and consider one of the LSMs.)
 
 # What's the Main Program?
 
@@ -101,10 +105,18 @@ allows for more straightforward configuration of what events are actually sent
 
 # ... But Actually
 
-Try [DIGIMend's kernel drivers][dmkd]. They're probably of higher quality than
-this cobbled-together Python script. If you find this device isn't supported,
-feel free to tell me (or take the constants herefrom and merge it on my behalf
-:) .
+I'm working on getting these merged into [DIGIMend's kernel drivers][dmkd]; see [issue 578][dmkd578].
+
+In the meantime, @kurikaesu has made a [userspace tablet driver daemon][utdd]
+based on this work, and with essentially the same APIs, but in C++ (and broader
+device support). As of this writing support for *this* tablet is experimental
+and has some bugs, but you should check that out for yourself. (These drivers
+are scheduled for merging into the kernel drivers above; see [pull
+557][dmkd557].)
+
+In any case, if you find this device isn't supported in software you'd like it
+to be, feel free to tell me (or take the constants herefrom and merge it on my
+behalf :) .
 
 # Licensing
 
@@ -115,6 +127,9 @@ care about Linux. (Of course, that's not to say there might not be someone
 passionate about that there--but still, why make them do all the work?)
 
 [dmkd]: https://github.com/DIGImend/digimend-kernel-drivers
+[dmkd578]: https://github.com/DIGImend/digimend-kernel-drivers/issues/578
+[dmkd557]: https://github.com/DIGImend/digimend-kernel-drivers/pull/557
+[utdd]: https://github.com/kurikaesu/userspace-tablet-driver-daemon
 [kig]: https://www.kernel.org/doc/html/v4.18/input/event-codes.html
 [pyusb]: https://pyusb.github.io/pyusb/
 [evdev]: https://pypi.org/project/evdev/
