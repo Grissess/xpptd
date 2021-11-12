@@ -124,6 +124,7 @@ class InputModel(object):
                     (e.ABS_TILT_Y, ait),
                 ],
                 e.EV_KEY: [
+                    e.BTN_TOOL_PEN,
                     e.BTN_TOUCH, e.BTN_STYLUS, e.BTN_STYLUS2,
                     e.BTN_0, e.BTN_1, e.BTN_2, e.BTN_3,
                     e.BTN_4, e.BTN_5, e.BTN_6, e.BTN_7,
@@ -138,10 +139,16 @@ class InputModel(object):
         # Mostly to avoid redundancy
         self.mbs = 0  # mouse button state
         self.bts = 0  # pad button state
+        self.ts = False  # tracking state
 
     def update(self, tab):
+        ts = tab.tracking
         mbs = tab.stylus
         bts = tab.buttons
+
+        if ts != self.ts:
+            self.ui.write(e.EV_KEY, e.BTN_TOOL_PEN, 1 if ts else 0)
+            self.ts = ts
 
         if self.mbs != mbs:
             self.ui.write(e.EV_KEY, e.BTN_TOUCH, 1 if mbs & Tablet.B2_BT_TOUCH else 0)
