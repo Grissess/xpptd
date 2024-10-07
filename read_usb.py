@@ -1,6 +1,7 @@
 import array
 import usb
-from evdev import UInput, AbsInfo, ecodes as e
+import libevdev as e
+from libevdev import InputAbsInfo, InputEvent, Device
 
 class Tablet(object):
     VENDOR = 0x28bd
@@ -105,73 +106,79 @@ class Tablet(object):
             yield self  # Some state changed, probably
 
     def __repr__(self):
-        return f'<Tablet x,y,p,tx,ty = {self.pos[0]},{self.pos[1]},{self.pressure},{self.tilt[0]},{self.tilt[1]} ({self.raw_pos[0]:04x},{self.raw_pos[1]:04x},{self.raw_pressure:04x}) s = {self.stylus:x} b = {self.buttons:02x}>'
+        return f'<Tablet prox {1 if self.tracking else 0} x,y,p,tx,ty = {self.pos[0]:.03f},{self.pos[1]:.03f},{self.pressure:.03f},{self.tilt[0]},{self.tilt[1]} ({self.raw_pos[0]:04x},{self.raw_pos[1]:04x},{self.raw_pressure:04x}) s = {self.stylus:x} b = {self.buttons:02x}>'
 
 class InputModel(object):
     MAX = 0xffff
 
-    @classmethod
-    def make_caps(cls):
+    def set_caps(self, dev):
+        dev.enable(e.INPUT_PROP_POINTER)
+        dev.enable(e.INPUT_PROP_DIRECT)
+
+        k = e.EV_KEY
+        for btn in [
+                k.BTN_TOOL_PEN,
+                k.BTN_TOUCH, k.BTN_STYLUS, k.BTN_STYLUS2,
+                k.BTN_0, k.BTN_1, k.BTN_2, k.BTN_3,
+                k.BTN_4, k.BTN_5, k.BTN_6, k.BTN_7,
+        ]:
+            dev.enable(btn)
+
         # TODO: find the meaning of an arbitrary resolution, required by libinput
-        ai = AbsInfo(value=0, min=0, max=cls.MAX, fuzz=0, flat=0, resolution=300)
-        ait = AbsInfo(value=0, min=Tablet.T_MIN, max=Tablet.T_MAX, fuzz=0, flat=0, resolution=0)
-        caps = {
-                e.EV_ABS: [
-                    (e.ABS_X, ai),
-                    (e.ABS_Y, ai),
-                    (e.ABS_PRESSURE, ai),
-                    (e.ABS_TILT_X, ait),
-                    (e.ABS_TILT_Y, ait),
-                ],
-                e.EV_KEY: [
-                    e.BTN_TOOL_PEN,
-                    e.BTN_TOUCH, e.BTN_STYLUS, e.BTN_STYLUS2,
-                    e.BTN_0, e.BTN_1, e.BTN_2, e.BTN_3,
-                    e.BTN_4, e.BTN_5, e.BTN_6, e.BTN_7,
-                ],
-        }
-        return caps
+        ai = InputAbsInfo(value=0, minimum=0, maximum=self.MAX, fuzz=0, flat=0, resolution=300)
+        ait = InputAbsInfo(value=0, minimum=Tablet.T_MIN, maximum=Tablet.T_MAX, fuzz=0, flat=0, resolution=0)
+        dev.enable(e.EV_ABS.ABS_X, ai)
+        dev.enable(e.EV_ABS.ABS_Y, ai)
+        dev.enable(e.EV_ABS.ABS_PRESSURE, ai)
+        dev.enable(e.EV_ABS.ABS_TILT_X, ait)
+        dev.enable(e.EV_ABS.ABS_TILT_Y, ait)
 
     def __init__(self):
-        self.ui = UInput(self.make_caps(), name = 'python-htd', input_props = [
-            e.INPUT_PROP_POINTER, e.INPUT_PROP_DIRECT,
-        ])
+        self.ui = Device()
+        self.ui.name = 'python-htd'
+        self.set_caps(self.ui)
+        self.ui = self.ui.create_uinput_device()
         # Mostly to avoid redundancy
         self.mbs = 0  # mouse button state
         self.bts = 0  # pad button state
         self.ts = False  # tracking state
 
     def update(self, tab):
+        eq = []
         ts = tab.tracking
         mbs = tab.stylus
         bts = tab.buttons
 
         if ts != self.ts:
-            self.ui.write(e.EV_KEY, e.BTN_TOOL_PEN, 1 if ts else 0)
+            eq.append(InputEvent(e.EV_KEY.BTN_TOOL_PEN, 1 if ts else 0))
             self.ts = ts
 
         if self.mbs != mbs:
-            self.ui.write(e.EV_KEY, e.BTN_TOUCH, 1 if mbs & Tablet.B2_BT_TOUCH else 0)
-            self.ui.write(e.EV_KEY, e.BTN_STYLUS, 1 if mbs & Tablet.B2_BT_LOWER else 0)
-            self.ui.write(e.EV_KEY, e.BTN_STYLUS2, 1 if mbs & Tablet.B2_BT_UPPER else 0)
+            eq.append(InputEvent(e.EV_KEY.BTN_TOUCH, 1 if mbs & Tablet.B2_BT_TOUCH else 0))
+            eq.append(InputEvent(e.EV_KEY.BTN_STYLUS, 1 if mbs & Tablet.B2_BT_LOWER else 0))
+            eq.append(InputEvent(e.EV_KEY.BTN_STYLUS2, 1 if mbs & Tablet.B2_BT_UPPER else 0))
             self.mbs = mbs
 
         if self.bts != bts:
             for i in range(8):
                 pot = 2**i
-                self.ui.write(e.EV_KEY, getattr(e, f'BTN_{i}'), 1 if pot & bts else 0)
+                eq.append(InputEvent(getattr(e.EV_KEY, f'BTN_{i}'), 1 if pot & bts else 0))
             self.bts = bts
 
-        self.ui.write(e.EV_ABS, e.ABS_X, int(self.MAX * tab.pos[0]))
-        self.ui.write(e.EV_ABS, e.ABS_Y, int(self.MAX * tab.pos[1]))
-        self.ui.write(e.EV_ABS, e.ABS_PRESSURE, int(self.MAX * tab.pressure))
-        self.ui.write(e.EV_ABS, e.ABS_TILT_X, tab.tilt[0])
-        self.ui.write(e.EV_ABS, e.ABS_TILT_Y, tab.tilt[1])
-        self.ui.syn()
+        eq.extend((
+            InputEvent(e.EV_ABS.ABS_X, int(self.MAX * tab.pos[0])),
+            InputEvent(e.EV_ABS.ABS_Y, int(self.MAX * tab.pos[1])),
+            InputEvent(e.EV_ABS.ABS_PRESSURE, int(self.MAX * tab.pressure)),
+            InputEvent(e.EV_ABS.ABS_TILT_X, tab.tilt[0]),
+            InputEvent(e.EV_ABS.ABS_TILT_Y, tab.tilt[1]),
+            InputEvent(e.EV_SYN.SYN_REPORT, 0),
+        ))
+        self.ui.send_events(eq)
 
 if __name__ == '__main__':
     t = Tablet()
     m = InputModel()
+    print(f'Device at {m.ui.devnode}, {m.ui.syspath}')
     for tab in t.process():
         print(tab)
         m.update(tab)

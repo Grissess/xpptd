@@ -24,7 +24,7 @@ to be unsupported.
 Since I'm still bad at packaging Python, I'll just tell you you need:
 
 - [PyUSB][pyusb], for the `usb` module; and
-- [(python-)evdev][evdev], for the `evdev` module.
+- [(python-)libevdev][libevdev], for the `libevdev` module.
 
 You'll also need to make sure your kernel supports `uinput`, the "User level
 driver support" `CONFIG_INPUT_UINPUT`. Most prebuilt kernels for typical linux
@@ -132,4 +132,4 @@ passionate about that there--but still, why make them do all the work?)
 [utdd]: https://github.com/kurikaesu/userspace-tablet-driver-daemon
 [kig]: https://www.kernel.org/doc/html/v4.18/input/event-codes.html
 [pyusb]: https://pyusb.github.io/pyusb/
-[evdev]: https://pypi.org/project/evdev/
+[libevdev]: https://pypi.org/project/libevdev/
